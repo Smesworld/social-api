@@ -3,3 +3,4 @@ Flask-Cors
 Flask-Migrate
 Flask-SQLAlchemy
 PyJWT
+gunicorn
