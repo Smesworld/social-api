@@ -172,7 +172,7 @@ def genres():
     genre_arr.append({"id": genre.genre_api_id, "name": genre.genre_name})
 
   genres_json = json.dumps(genre_arr)
-  return genres_json
+  return make_response(jsonify(genre_arr)), 200
 
 @app.route("/api/<user>/genres", methods=['GET', 'POST'])
 def userGenres(user):
