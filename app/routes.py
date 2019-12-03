@@ -8,28 +8,25 @@ import random
 from flask import request
 import dotenv
 import os
+from lxml import html
 
 dotenv.load_dotenv()
 TMDB_key = os.getenv('TMDB_KEY')
 
-CORS(app)
-
+# Route for generating a movie suggestion
 @app.route("/suggestion", methods=['GET', 'POST'])
 def suggestions():
   req = json.loads(request.data)
   min_runtime = req['minimumRuntime']
   max_runtime = req['maximumRuntime']
-  print(min_runtime)
-  print(max_runtime)
+  user_genre_preferences = req['userGenrePreferences']
 
-
+  # Make list of previously suggested movie ids
   suggested_ids = []
   for suggestion in req['recentSuggestions']:
     suggested_ids.append(suggestion['newSuggestion']['tmdb_id'])
-  
-  user_genre_preferences = req['userGenrePreferences']
 
-  # Confert user preferences to more useable object
+  # Convert user preferences to more useable object
   preferences = {}
   for user_preference in user_genre_preferences:
     preferences[user_preference['id']] = user_preference['preference']
@@ -45,7 +42,7 @@ def suggestions():
         elif genre.preference == True:
           preferences[genre.genre.genre_api_id] = True
 
-  # Do some things to the lists to make them in a thing
+  # Break-up all preferences into lists for each preference
   user_loved_genres = []
   user_meh_genres = []
   user_hated_genres = []
@@ -58,17 +55,20 @@ def suggestions():
     elif preferences[genre] == False:
       user_hated_genres.append(str(genre))
 
+# Check if no genres are in meh or loved, thus all are hated and we return Bob Ross movie
   if len(user_meh_genres) == 0 and len(user_loved_genres) == 0:
+
+    if len(req['group']) == 0:
+      error = "solo"
+    else:
+      error = "group"
+
     full_hate_info = {
-      "title": "No Movie For You",
-      "description": "It seems you are not the moving watching kind",
-    }
-  
-    full_hate_info = {
+    "error": error,
     "title": "Bob Ross: The Happy Painter",
     "poster": "https://image.tmdb.org/t/p/w500/yhV6rSv8Ry80lyDL8sjZpu8hzph.jpg",
-    "description": "We couldn't find an appropriate movie to recommend based on the current genre prefernces. However, we believe everyone will enjoy this!",
-    "release_date": "2011-12-03",
+    "description": "A behind-the-scenes look at the beloved public television personality's journey from humble beginnings to an American pop-culture icon. \"The Happy Painter\" reveals the public and private sides of Bob Ross through loving accounts from close friends and family, childhood photographs and rare archival footage.  Interviewees recount his gentle, mild-mannered demeanor and unwavering dedication to wildlife, and disclose little-known facts about his hair, his fascination with fast cars and more.  Film clips feature Bob Ross with mentor William Alexander and the rough-cut of the first \"Joy of Painting\" episode from 1982. Famous Bob Ross enthusiasts, including talk-show pioneer Phil Donahue, film stars Jane Seymour and Terrence Howard, chef Duff Goldman and country music favorites Brad Paisley and Jerrod Niemann, provide fascinating insights into the man, the artist and his legacy.",
+    "release_date": "2011",
     "tmdb_id": "238959",
     "imdb_link": "https://www.imdb.com/title/tt2155259/"
     }
@@ -76,6 +76,7 @@ def suggestions():
     full_hate_info_json = json.dumps(full_hate_info)
     return full_hate_info_json
 
+# Make hated genre query string
   if len(user_hated_genres) > 1:
     hated_list = (",".join(user_hated_genres))
   elif len(user_hated_genres) == 1:
@@ -92,30 +93,29 @@ def suggestions():
 
     if len(user_loved_genres_loop_copy) != 0:
       index = random.randint(0, (len(user_loved_genres_loop_copy) - 1))
-      r = requests.get("https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&sort_by=popularity.desc&include_adult=false&include_video=false&page={}&with_genres={}&without_genres={}&with_runtime.gte={}&with_runtime.lte={}".format(TMDB_key, page_num, user_loved_genres[index], hated_list, min_runtime, max_runtime))
+      r = requests.get("https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&sort_by=popularity.desc&include_adult=false&include_video=false&page={}&with_genres={}&without_genres={}&with_runtime.gte={}&with_runtime.lte={}&release_date.lte=2020-04-01".format(TMDB_key, page_num, user_loved_genres_loop_copy[index], hated_list, min_runtime, max_runtime))
+      this_one = ["PAGE", page_num, "INDEX", index, "A LOVED"]
       del user_loved_genres_loop_copy[index]
     elif len(user_meh_genres_loop_copy) != 0:
       index = random.randint(0, (len(user_meh_genres_loop_copy) - 1))
-      r = requests.get("https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&sort_by=popularity.desc&include_adult=false&include_video=false&page={}&with_genres={}&without_genres={}&with_runtime.gte={}&with_runtime.lte={}".format(TMDB_key, page_num, user_meh_genres[index], hated_list, min_runtime, max_runtime))
+      r = requests.get("https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&sort_by=popularity.desc&include_adult=false&include_video=false&page={}&with_genres={}&without_genres={}&with_runtime.gte={}&with_runtime.lte={}&release_date.lte=2020-04-01".format(TMDB_key, page_num, user_meh_genres_loop_copy[index], hated_list, min_runtime, max_runtime))
+      this_one = ["PAGE", page_num, "INDEX", index, "A MEH'D"]      
       del user_meh_genres_loop_copy[index]
     else:
-      index = 0
-      r = requests.get("https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&sort_by=popularity.desc&include_adult=false&include_video=false&page={}&with_genres={}&without_genres={}&with_runtime.gte={}&with_runtime.lte={}".format(TMDB_key, page_num, user_meh_genres[index], hated_list, min_runtime, max_runtime))
-
+      index = random.randint(0, (len(user_loved_genres) - 1))
+      this_one = ["PAGE", page_num, "INDEX", index, "A RANDO"]
+      r = requests.get("https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&sort_by=popularity.desc&include_adult=false&include_video=false&page={}&with_genres={}&with_runtime.gte={}&with_runtime.lte={}&release_date.lte=2020-04-01".format(TMDB_key, page_num, user_loved_genres[index], min_runtime, max_runtime))
 
     tmdb_result = json.loads(r.text)
     results = tmdb_result["results"]
     
     for index, result in enumerate(results):
-      # print('result: ', result['id'])
-      # print('index: ', index)
       if result['id'] in suggested_ids:
-        print("it was in here!")
-        print(result['title'])
         del results[index]
         
     all_results += results
 
+  print("IT SUCCESSFULLY SEARCHED", this_one)
   selected_result = all_results[(random.randint(0, (len(all_results) - 1)))]
 
   details_r = requests.get("https://api.themoviedb.org/3/movie/{}?api_key={}&language=en-US".format(selected_result["id"], TMDB_key))
@@ -125,30 +125,39 @@ def suggestions():
   if selected_result["poster_path"]:
     poster = "https://image.tmdb.org/t/p/w500" + selected_result["poster_path"]
   else:
-    poster = ""
+    poster = "images/noposter.png"
 
+  ratingText = ''
   if imdb_id:
     imdb_link = "https://www.imdb.com/title/{}/".format(imdb_id)
+    imdb_details = requests.get(imdb_link)
+    tree = html.fromstring(imdb_details.content)
+
+    try:
+      rating = tree.xpath('//*[@id="title-overview-widget"]/div[1]/div[2]/div/div[1]/div[1]/div[1]/strong/span/text()')
+    except:
+      print("A scraping error occured")
+      ratingText = "No IMDB rating available."
+
+    if len(rating) > 0:
+      ratingText = str(rating[0]) + '/10 on IMDB'
   else:
-    imdb_link = "https://www.imdb.com/"
+    imdb_link = "No IMDB link available."
+    
 
   movie_info = {
     "title": selected_result["title"],
     "poster": poster,
     "description": selected_result["overview"],
-    "release_date": selected_result["release_date"],
+    "release_date": selected_result["release_date"][:4],
     "tmdb_id": selected_result["id"],
     "imdb_link": imdb_link,
-    "runtime" : runtime
+    "runtime" : runtime,
+    "rating" : ratingText
   }
 
   movie_info_json = json.dumps(movie_info)
   return movie_info_json
-
-@app.route("/hello")
-def hello():
-  u = User.query.all()[0]
-  return "Hello World! {}".format(u.name)
 
 @app.route("/api/users")
 def users():
@@ -172,7 +181,20 @@ def genres():
     genre_arr.append({"id": genre.genre_api_id, "name": genre.genre_name})
 
   genres_json = json.dumps(genre_arr)
-  return make_response(jsonify(genre_arr)), 200
+  return genres_json
+
+@app.route("/api/friend<user>/genres")
+def friendGenres(user):
+  name = User.query.filter(User.name == user).one_or_none()
+  genres = {"love":[], "hate":[]}
+
+  for genre in name.user_genres:
+    if genre.preference == True:
+      genres["love"].append(genre.genre.genre_name)
+    if genre.preference == False:
+       genres["hate"].append(genre.genre.genre_name)
+  res_json = json.dumps(genres)
+  return res_json
 
 @app.route("/api/<user>/genres", methods=['GET', 'POST'])
 def userGenres(user):
@@ -180,7 +202,6 @@ def userGenres(user):
 
   if request.method == 'POST':
     req = json.loads(request.data)
-
     genre = Genre.query.filter(Genre.genre_api_id == req['id']).first()
 
     update_genre = User_genre.query.filter(User_genre.user_id == user.id, User_genre.genre_id == genre.id).first()
@@ -214,6 +235,33 @@ def userGenres(user):
 
   return res_json
 
+@app.route("/api/<user>/genresreset", methods=['POST'])
+def resetGenres(user):
+  user = User.query.filter(User.name == user).one_or_none()
+  
+  genres = []
+
+  for genre in user.user_genres:
+    genre.preference = None
+    db.session.add(genre)
+    db.session.commit()
+    
+    genres.append(
+      {
+        "id": genre.genre.genre_api_id,
+        "preference": genre.preference
+      }
+    )
+
+  res = {
+    "genres": genres
+  }
+
+  res_json = json.dumps(res)
+
+  return res_json
+
+
 @app.route("/api/<user>/favmovies", methods=['GET', 'POST', 'DELETE'])
 def userFavmovies(user):
   dbUser = User.query.filter(User.name == user).one_or_none()
@@ -221,22 +269,24 @@ def userFavmovies(user):
 
   if request.method == 'POST':
     req = json.loads(request.data)
+
     title = req['movie']['title']
     image = req['movie']['poster']
+    description = req['movie']['description']
     movie_api_id = req['movie']['tmdbId']
 
-    
-    
     new_movie = Movie.query.filter(Movie.movie_api_id == str(movie_api_id)).first()
 
     if new_movie == None:
-      new_movie = Movie(title = title, movie_api_id = movie_api_id, image = image)    
+      new_movie = Movie(title = title, movie_api_id = movie_api_id, image = image, description = description)    
       db.session.add(new_movie)
       db.session.commit()
-      
-    new_fave_movie = Favorited_movie(user_id = dbUser.id, movie_id = new_movie.id)
-    db.session.add(new_fave_movie)
-    db.session.commit()
+
+    previously_faved = Favorited_movie.query.filter(Favorited_movie.user_id == dbUser.id, Favorited_movie.movie_id == new_movie.id).one_or_none()
+    if previously_faved == None:
+      new_fave_movie = Favorited_movie(user_id = dbUser.id, movie_id = new_movie.id)
+      db.session.add(new_fave_movie)
+      db.session.commit()
 
   if request.method == 'DELETE':
     req = json.loads(request.data)
@@ -254,6 +304,7 @@ def userFavmovies(user):
       {
         "id": fave_movie.movie.id,
         "title": fave_movie.movie.title,
+        "description": fave_movie.movie.description,
         "img": fave_movie.movie.image
       }
     )
@@ -274,21 +325,23 @@ def userLatemovies(user):
 
   if request.method == 'POST':
     req = json.loads(request.data)
-
     title = req['suggestedMovie']['title']
     image = req['suggestedMovie']['poster']
+    description = req['suggestedMovie']['description']
     movie_api_id = req['suggestedMovie']['tmdbId']
 
     new_movie = Movie.query.filter(Movie.movie_api_id == str(movie_api_id)).first()
 
     if new_movie == None:
-      new_movie = Movie(title = title, movie_api_id = movie_api_id, image = image)    
+      new_movie = Movie(title = title, movie_api_id = movie_api_id, image = image, description = description)    
       db.session.add(new_movie)
       db.session.commit()
 
-    new_later_movie = Later_movie(user_id = dbUser.id, movie_id = new_movie.id)
-    db.session.add(new_later_movie)
-    db.session.commit()
+    previously_latered = Later_movie.query.filter(Later_movie.user_id == dbUser.id, Later_movie.movie_id == new_movie.id).one_or_none()
+    if previously_latered == None:
+      new_later_movie = Later_movie(user_id = dbUser.id, movie_id = new_movie.id)
+      db.session.add(new_later_movie)
+      db.session.commit()
 
   if request.method == 'DELETE':
     req = json.loads(request.data)
@@ -304,6 +357,7 @@ def userLatemovies(user):
       {
         "id": later_movie.movie.id,
         "title": later_movie.movie.title,
+        "description": later_movie.movie.description,
         "img": later_movie.movie.image
       }
     )
@@ -319,10 +373,19 @@ def userLatemovies(user):
 @app.route("/movies/title/")
 def title():
   movie_title = request.args['title']
+
   movies = requests.get("https://api.themoviedb.org/3/search/movie?api_key={}&language=en-US&query={}&page=1&include_adult=false".format(TMDB_key, movie_title))
   movies_dict = movies.json()
-  results = movies_dict["results"]
+  
+  if movies_dict['total_results'] == 0:
+    no_movies = {
+      'error': 'No movies were found for your search'
+    }
 
+    no_movies_json = json.dumps(no_movies)
+    return no_movies_json
+  
+  results = movies_dict["results"]
   movies = []
 
   for result in results: 
@@ -330,9 +393,14 @@ def title():
     if result["poster_path"]:
       result_poster = "https://image.tmdb.org/t/p/w500" + result["poster_path"]
     else:
-      result_poster = "Nope"
+      result_poster = "images/noposter.png"
+
+    if 'release_date' not in result:
+      result_release_date = ""
+    else:
+      result_release_date = result["release_date"][:4]
+  
     result_description = result["overview"]
-    result_release_date = result["release_date"]
     result_tmdb_id = result["id"]
 
     movie_info = {
@@ -350,7 +418,6 @@ def title():
     }
 
   movies_json = json.dumps(res)
-
   return movies_json
 
 @app.route("/signup", methods=['POST'])
@@ -358,11 +425,11 @@ def signup():
   req = json.loads(request.data)
 
   user = User.query.filter(User.name == req['name']).one_or_none()
-
   if user != None:
     return make_response(jsonify({ "error": "Username already exists." })), 401
 
-  user = User(name=req['name'], icon="https://ui-avatars.com/api/?background=e3b04b&color=fff&size=50&rounded=true&bold=true&name={}".format(req['name']))
+  num = random.randint(1, 4)
+  user = User(name=req['name'], icon="images/user{}.png".format(num))
   user.set_password(req['password'])
 
   db.session.add(user)
@@ -403,9 +470,7 @@ def login():
   req = json.loads(request.data)
 
   user = User.query.filter(User.name == req['name']).one_or_none()
-  print(user)
   if user == None or not user.check_password(req['password']):
-    print("WE MADE IT")
     return make_response(jsonify({ "error": "Invalid password." })), 401
 
   genres = []
@@ -418,9 +483,13 @@ def login():
       }
     )
 
+  token = user.generate_token(user.id)
+
   userInfo = {
+    "id": user.id,
     "name": user.name,
-    "avatar": user.icon
+    "avatar": user.icon,
+    "token": token.decode()
   }
 
   later_movies = []
@@ -430,9 +499,11 @@ def login():
       {
         "id": later_movie.movie.id,
         "title": later_movie.movie.title,
+        "description": later_movie.movie.description,
         "img": later_movie.movie.image
       }
     )
+
   favorited_movies = []
 
   for fave_movie in user.favorited_movies:
@@ -440,9 +511,11 @@ def login():
       {
         "id": fave_movie.movie.id,
         "title": fave_movie.movie.title,
+        "description": fave_movie.movie.description,
         "img": fave_movie.movie.image
       }
     )
+
   res = {
     "user": userInfo,
     "genres": genres,
